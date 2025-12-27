@@ -1,0 +1,159 @@
+name: mldgb #test #point_pillar_intermediate_fusion
+root_dir: '/home/baoluli/personal/1.dataset/V2V4Real/train'
+validate_dir: '/home/baoluli/personal/1.dataset/V2V4Real/test'
+save_dir: "/home/baoluli/personal/2.model_saved/4.Adverseweather/v2v4real_DG"
+
+yaml_parser: "load_point_pillar_params"
+
+DG_params:
+  Is_DG: False
+  DG_validate_num: 3
+  DG_validate_name: ['snow','fog','rain ']
+  DG_validate_dir: ['/home/baoluli/personal/1.dataset/V2V4real_w/snow',
+                    '/home/baoluli/personal/1.dataset/V2V4real_w/fog',
+                    '/home/baoluli/personal/1.dataset/V2V4real_w/rain']
+  Augment_params:
+    dynamic_range: True
+    range_proportion_low: 0.5
+    range_proportion_high: 0.8
+    random_drop_out: True
+    random_guss_noise: True
+    random_jittering: True
+
+  Agent_level_align: True
+  agent_level_test_method: 20 #0 #20
+  #Agent_align_level: 0
+  Agent_level_align_weight: 0.1
+
+  Fusion_level_align: True
+  fusion_level_test_method: 1
+  Fusion_level_align_weight: 1
+
+  Agent_level_metric: True
+  Agent_level_metric_weight: 0.01
+  Agent_level_metric_method: 1
+  Agent_metric_level: 0
+  Agent_level_metric_learner: true
+  Agent_level_metric_learner_args:
+      in_channel: 384
+      out_channel: 128
+      setting: 7
+
+  Fusion_level_metric: True
+  Fusion_level_metric_weight: 0.01
+  fusion_level_metric_method: 1
+  Fusion_level_metric_learner: true
+  Fusion_level_metric_learner_args:
+      in_channel: 384
+      out_channel: 128
+      setting: 7
+
+
+wild_setting:
+  async: false
+  async_overhead: 100
+  seed: 20
+  loc_err: false
+  xyz_std: 0.2
+  ryp_std: 0.2
+  data_size: 1.06 # Mb!!
+  transmission_speed: 27 # Mbps!!
+  backbone_delay: 10 # ms
+
+train_params:
+  batch_size: &batch_size 1
+  epoches: &epoches 60
+  eval_freq: 1
+  save_freq: 1
+  max_cav: &max_cav 5
+
+fusion:
+  core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  args: []
+
+# preprocess-related
+preprocess:
+  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
+  core_method: 'SpVoxelPreprocessor'
+  args:
+    voxel_size: &voxel_size [0.4, 0.4, 8]
+    max_points_per_voxel: 32
+    max_voxel_train: 32000
+    max_voxel_test: 70000
+  # lidar range for each individual cav.
+  cav_lidar_range: &cav_lidar [-140.8, -38.4, -5, 140.8, 38.4, 3]
+
+data_augment:
+  - NAME: random_world_flip
+    ALONG_AXIS_LIST: [ 'x' ]
+
+  - NAME: random_world_rotation
+    WORLD_ROT_ANGLE: [ -0.78539816, 0.78539816 ]
+
+  - NAME: random_world_scaling
+    WORLD_SCALE_RANGE: [ 0.95, 1.05 ]
+
+# anchor box related
+postprocess:
+  core_method: 'VoxelPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
+  anchor_args:
+    cav_lidar_range: *cav_lidar
+    l: 3.9
+    w: 1.6
+    h: 1.56
+    r: [0, 90]
+    feature_stride: 2 #2
+    num: &achor_num 2
+  target_args:
+    pos_threshold: 0.6
+    neg_threshold: 0.45
+    score_threshold: 0.10
+  order: 'hwl' # hwl or lwh
+  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+  nms_thresh: 0.15
+
+# model related
+model:
+  core_method: point_pillar_intermediate
+  args:
+    voxel_size: *voxel_size
+    lidar_range: *cav_lidar
+    anchor_number: *achor_num
+
+    pillar_vfe:
+      use_norm: true
+      with_distance: false
+      use_absolute_xyz: true
+      num_filters: [64]
+    point_pillar_scatter:
+      num_features: 64
+
+    base_bev_backbone:
+      layer_nums: [3, 5, 8]
+      layer_strides: [2, 2, 2]
+      num_filters: [64, 128, 256]
+      upsample_strides: [1, 2, 4]
+      num_upsample_filter: [128, 128, 128]
+      compression: 0
+
+    anchor_num: *achor_num
+
+loss:
+  core_method: point_pillar_loss
+  args:
+    cls_weight: 1.0
+    reg: 2.0
+
+optimizer:
+  core_method: Adam
+  lr: 0.001
+  args:
+    eps: 1e-10
+    weight_decay: 1e-4
+
+lr_scheduler:
+    core_method: cosineannealwarm #step, multistep, Exponential and cosineannealwarm support
+    epoches: *epoches
+    warmup_lr: 2e-4
+    warmup_epoches: 10
+    lr_min: 2e-5
