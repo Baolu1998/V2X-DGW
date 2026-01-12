@@ -1,10 +1,7 @@
-name: test #point_pillar_intermediate_fusion_all #_align_agent_20_5_fusion_1_1 #point_pillar_intermediate_fusion_metric_1_setting_6
-root_dir: "/home/baoluli/personal/1.dataset/opv2v_data_dumping/train"
-validate_dir: "/home/baoluli/personal/1.dataset/opv2v_data_dumping/test_culver_city"
-save_dir: "/home/baoluli/personal/2.model_saved/4.Adverseweather/opv2v_DG"
-
-
-
+name: name
+root_dir: "path/opv2v_data_dumping/train"
+validate_dir: "path/opv2v_data_dumping/test_culver_city"
+save_dir: "path"
 
 yaml_parser: "load_point_pillar_params"
 train_params:
@@ -15,18 +12,15 @@ train_params:
 
 DG_params:
   Is_DG: True
-  DG_validate_num: 10
-  DG_validate_name: ['opv2v-large','opv2v-small-snow','opv2v-small-fog','opv2v-small-rain ','opv2v-large-snow','opv2v-large-fog','opv2v-large-rain','v2xset-snow','v2xset-fog','v2xset-rain']
-  DG_validate_dir: ['/home/baoluli/personal/1.dataset/opv2v_data_dumping/test',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/snow_severity_new_4/test_culver_city',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/fog_value_0.008/test_culver_city',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/rain_severity_10/test_culver_city',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/snow_severity_new_5/test',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/fog_value_0.008/test',
-                    '/home/baoluli/personal/1.dataset/opv2v_adverse_weather/rain_severity_7/test',
-                    '/home/baoluli/personal/1.dataset/V2X_adverse_weather/19/test',
-                    '/home/baoluli/personal/1.dataset/V2X_adverse_weather/22/test',
-                    '/home/baoluli/personal/1.dataset/V2X_adverse_weather/rain_severity_7/test']
+  DG_validate_num: 7
+  DG_validate_name: ['opv2v-large','opv2v-snow','opv2v-fog','opv2v-rain','v2xset-snow','v2xset-fog','v2xset-rain']
+  DG_validate_dir: ['pathopv2v_data_dumping/test',
+                    'path/opv2v-W/snow/test',
+                    'path/opv2v-W/fog/test',
+                    'path/opv2v-W/rain/test',
+                    'path/v2xset-W/snow/test',
+                    'path/v2xset-W/fog/test',
+                    'path/v2xset-W/rain/test']
   Augment_params:
     dynamic_range: True
     range_proportion_low: 0.5
@@ -36,41 +30,33 @@ DG_params:
     random_jittering: True
 
   Agent_level_align: True
-  agent_level_test_method: 0 #20
-  #Agent_align_level: 0
   Agent_level_align_weight: 0.1
 
   Fusion_level_align: True
-  fusion_level_test_method: 1
   Fusion_level_align_weight: 1
 
   Agent_level_metric: True
   Agent_level_metric_weight: 0.01
-  Agent_level_metric_method: 1
   Agent_metric_level: 0
   Agent_level_metric_learner: true
   Agent_level_metric_learner_args:
       in_channel: 384
       out_channel: 128
-      setting: 7
 
   Fusion_level_metric: True
   Fusion_level_metric_weight: 0.01
-  fusion_level_metric_method: 1
   Fusion_level_metric_learner: true
   Fusion_level_metric_learner_args:
       in_channel: 384
       out_channel: 128
-      setting: 7
 
 
 fusion:
-  core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'IntermediateFusionDataset' 
   args: []
 
 # preprocess-related
 preprocess:
-  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
   core_method: 'SpVoxelPreprocessor'
   args:
     voxel_size: &voxel_size [0.4, 0.4, 4]

@@ -19,24 +19,11 @@ from opencood.data_utils.datasets import build_dataset
 from opencood.tools import train_utils
 
 
-# def train_parser():
-#     parser = argparse.ArgumentParser(description="synthetic data generation")
-#     parser.add_argument("--hypes_yaml", type=str, required=True,
-#                         help='data generation yaml file needed ')
-#     parser.add_argument('--model_dir', type=str, default='',#required=True,#,
-#                         help='Continued training path')
-#     parser.add_argument("--half", action='store_true',
-#                         help="whether train with half precision.")
-#     parser.add_argument('--dist_url', default='env://',
-#                         help='url used to set up distributed training')
-#     opt = parser.parse_args()
-#     return opt
-
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
-    parser.add_argument("--hypes_yaml", type=str, default='/home/baoluli/1.code/4.Adverseweather/V2V_baolu/opencood/hypes_yaml/v2v4real_DG/base.yaml',#required=True,
+    parser.add_argument("--hypes_yaml", type=str, required=True,
                         help='data generation yaml file needed ')
-    parser.add_argument('--model_dir', type=str, default='',#required=True,#,
+    parser.add_argument('--model_dir', type=str, default='',
                         help='Continued training path')
     parser.add_argument("--half", action='store_true',
                         help="whether train with half precision.")

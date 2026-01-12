@@ -1,6 +1,5 @@
 import argparse
 import os
-#os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 import time
 
 import torch
@@ -14,47 +13,16 @@ from opencood.visualization import vis_utils
 from opencood.utils import eval_utils
 
 
-# model='/home/baoluli/personal/2.model_saved/4.Adverseweather/opv2v/point_pillar_late_fusion_2023_12_04_21_59_28'
-
-# CUDA_VISIBLE_DEVICES=0 python3 /home/baoluli/1.code/4.Adverseweather/V2V_baolu/opencood/tools/inference.py \
-#     --fusion_method late \
-#     --model_dir $model \
-#     --isSim 
-
-# def test_parser():
-#     parser = argparse.ArgumentParser(description="synthetic data generation")
-#     parser.add_argument('--model_dir', type=str,required=True,# default='/home/baoluli/personal/2.model_saved/4.Adverseweather/opv2v/point_pillar_intermediate_fusion_2023_12_04_22_02_44', #
-#                         help='Continued training path')
-#     parser.add_argument('--fusion_method',required=True, # default='intermediate', #
-#                         type=str,
-#                         help='nofusion, late, early or intermediate')
-#     parser.add_argument('--show_vis',action='store_true',# default=False,#
-#                         help='whether to show image visualization result')
-#     parser.add_argument('--show_sequence', action='store_true',
-#                         help='whether to show video visualization result.'
-#                              'it can note be set true with show_vis together ')
-#     parser.add_argument('--save_vis', action='store_true',
-#                         help='whether to save visualization result')
-#     parser.add_argument('--save_npy', action='store_true',
-#                         help='whether to save prediction and gt result'
-#                              'in npy file')
-#     parser.add_argument('--isSim',action='store_true',# default=True ,#
-#                         help='whether to save prediction and gt result'
-#                              'in npy file')
-#     opt = parser.parse_args()
-#     return opt
-
-
 def test_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
-    parser.add_argument('--model_dir', type=str,default='/home/baoluli/personal/2.model_saved/4.Adverseweather/V2V4Real/point_pillar_intermediate_fusion_2023_12_13_16_27_46', #required=True,# 
+    parser.add_argument('--model_dir', type=str,required=True,
                         help='Continued training path')
-    parser.add_argument('--fusion_method',default='intermediate', #required=True, # 
+    parser.add_argument('--fusion_method',required=True, 
                         type=str,
                         help='nofusion, late, early or intermediate')
-    parser.add_argument('--show_vis',default=False,#action='store_true',# 
+    parser.add_argument('--show_vis',action='store_true',
                         help='whether to show image visualization result')
-    parser.add_argument('--show_sequence', default=False,#action='store_true',
+    parser.add_argument('--show_sequence', action='store_true',
                         help='whether to show video visualization result.'
                              'it can note be set true with show_vis together ')
     parser.add_argument('--save_vis', action='store_true',
@@ -62,11 +30,12 @@ def test_parser():
     parser.add_argument('--save_npy', action='store_true',
                         help='whether to save prediction and gt result'
                              'in npy file')
-    parser.add_argument('--isSim',default=False ,#action='store_true',# 
+    parser.add_argument('--isSim',action='store_true',
                         help='whether to save prediction and gt result'
                              'in npy file')
     opt = parser.parse_args()
     return opt
+
 
 
 
@@ -132,9 +101,6 @@ def main():
             vis_aabbs_pred.append(o3d.geometry.TriangleMesh())
 
     for i, batch_data in enumerate(data_loader):
-        print(i)
-        if i > 100:
-            break
         with torch.no_grad():
             torch.cuda.synchronize()
             batch_data = train_utils.to_device(batch_data, device)
@@ -238,8 +204,6 @@ def main():
                     if not os.path.exists(vis_save_path):
                         os.makedirs(vis_save_path)
                     vis_save_path = os.path.join(vis_save_path, '%05d.png' % i)
-                print('gt:')
-                print(gt_box_tensor)
                 opencood_dataset.visualize_result(pred_box_tensor,
                                                   gt_box_tensor,
                                                   batch_data['ego'][

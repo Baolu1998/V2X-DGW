@@ -1,1 +1,0 @@
-# the configuration files for v2x models with domain adaptions

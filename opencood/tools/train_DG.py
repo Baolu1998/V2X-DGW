@@ -1,12 +1,7 @@
-# -*- coding: utf-8 -*-
-# Author: Runsheng Xu <rxx3386@ucla.edu>
-# License: TDG-Attribution-NonCommercial-NoDistrib
-
-
 import argparse
 import os
 import statistics
-#os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+
 import torch
 import tqdm
 from tensorboardX import SummaryWriter
@@ -28,7 +23,7 @@ def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
     parser.add_argument("--hypes_yaml", type=str, required=True,
                         help='data generation yaml file needed ')
-    parser.add_argument('--model_dir', type=str, default='',#required=True,#,
+    parser.add_argument('--model_dir', type=str, default='',
                         help='Continued training path')
     parser.add_argument("--half", action='store_true',
                         help="whether train with half precision.")
@@ -36,19 +31,6 @@ def train_parser():
                         help='url used to set up distributed training')
     opt = parser.parse_args()
     return opt
-
-# def train_parser():
-#     parser = argparse.ArgumentParser(description="synthetic data generation")
-#     parser.add_argument("--hypes_yaml", type=str, default='/home/baoluli/1.code/4.Adverseweather/V2V_baolu/opencood/hypes_yaml/v2v4real_DG/point_pillar_intermediate_fusion.yaml',#required=True,
-#                         help='data generation yaml file needed ')
-#     parser.add_argument('--model_dir', type=str, default='',#required=True,#,
-#                         help='Continued training path')
-#     parser.add_argument("--half", action='store_true',
-#                         help="whether train with half precision.")
-#     parser.add_argument('--dist_url', default='env://',
-#                         help='url used to set up distributed training')
-#     opt = parser.parse_args()
-#     return opt
 
 
 def main():
@@ -143,11 +125,8 @@ def main():
 
     else:
         init_epoch = 0
-        # if we train the model from scratch, we need to create a folder
-        # to save the model,
         saved_path = train_utils.setup_train(hypes)
 
-    # we assume gpu is necessary
     if torch.cuda.is_available():
         model.to(device)
     model_without_ddp = model
@@ -159,10 +138,10 @@ def main():
                                                       find_unused_parameters=True)
         model_without_ddp = model.module
 
-    # define the loss
+
     criterion = train_utils.create_loss(hypes)
 
-    # optimizer setup
+
     optimizer = train_utils.setup_optimizer(hypes, model_without_ddp)
 
     if hypes['DG_params']['Is_DG']:
@@ -170,7 +149,7 @@ def main():
             optimizer_fusion_metric_learner = train_utils.setup_optimizer(hypes, fusion_level_metric_learner)
         if hypes['DG_params']['Agent_level_metric']: 
             optimizer_agent_metric_learner = train_utils.setup_optimizer(hypes, agent_level_metric_learner)
-    # lr scheduler setup
+
     num_steps = len(train_loader)
     scheduler = train_utils.setup_lr_schedular(hypes, optimizer, num_steps)
     if hypes['DG_params']['Is_DG']:
@@ -178,16 +157,16 @@ def main():
             scheduler_fusion_metric_learner = train_utils.setup_lr_schedular(hypes, optimizer_fusion_metric_learner, num_steps)
         if hypes['DG_params']['Agent_level_metric']: 
             scheduler_agent_metric_learner = train_utils.setup_lr_schedular(hypes, optimizer_agent_metric_learner, num_steps)
-    # record training
+
     writer = SummaryWriter(saved_path)
 
-    # half precision training
+
     if opt.half:
         scaler = torch.cuda.amp.GradScaler()
 
     print('Training start')
     epoches = hypes['train_params']['epoches']
-    # used to help schedule learning rate
+
 
     for epoch in range(init_epoch, max(epoches, init_epoch)):
         if hypes['lr_scheduler']['core_method'] != 'cosineannealwarm':
@@ -234,16 +213,8 @@ def main():
             batch_data['aug_ego'].pop('cav_masks')
             batch_data = train_utils.to_device(batch_data, device)
 
-            # case1 : late fusion train --> only ego needed,
-            # and ego is random selected
-            # case2 : early fusion train --> all data projected to ego
-            # case3 : intermediate fusion --> ['ego']['processed_lidar']
-            # becomes a list, which containing all data from other cavs
-            # as well
             if not opt.half:
                 source_ouput_dict = model(batch_data['ego'])
-                # first argument is always your output dictionary,
-                # second argument is always your label dictionary.
                 source_final_loss = criterion(source_ouput_dict,
                                        batch_data['ego']['label_dict'],DG_domain='source')
 
@@ -268,514 +239,42 @@ def main():
                 aug_spatial_features = aug_ouput_dict['batch_dict']['spatial_features']
                 backup_aug_spatial_features = aug_ouput_dict['back_aug_mask_needs']
 
-                if hypes['DG_params']['agent_level_test_method'] == 20:
-                    if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
-     
-
+                
+                if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
+                    bs, channel, length, width = source_spatial_features.shape
+                    mask = torch.zeros(bs, length, width).to(device)
+                    non_zero_elements = torch.any(backup_aug_spatial_features != 0, dim=1)
+                    mask[non_zero_elements] = 1
+                    num = torch.sum(mask)
+                    mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
+                    
+                    masked_source_spatial = source_spatial_features.detach() * mask
+                    agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
+                    final_loss += agent_level_align_weight * agent_level_align_loss
+                else:
+                    source_spatial_features = source_spatial_features.detach() 
+                    remove_num = 0
+                    index = 0
+                    for idx in cav_masks:
+                        cur_cav_mask = cav_masks[idx]
+                        if cur_cav_mask == 0:
+                            index_to_remove = index - remove_num
+                            source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
+                            remove_num += 1
+                        index += 1
+                    mask = (aug_spatial_features != 0)
+                    if mask.shape == source_spatial_features.shape:
+                        
                         bs, channel, length, width = source_spatial_features.shape
                         mask = torch.zeros(bs, length, width).to(device)
                         non_zero_elements = torch.any(backup_aug_spatial_features != 0, dim=1)
                         mask[non_zero_elements] = 1
                         num = torch.sum(mask)
                         mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-                        
-                        masked_source_spatial = source_spatial_features.detach() * mask
+
+                        masked_source_spatial = source_spatial_features * mask
                         agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
                         final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_spatial_features = source_spatial_features.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        mask = (aug_spatial_features != 0)
-                        if mask.shape == source_spatial_features.shape:
-                            
-                            bs, channel, length, width = source_spatial_features.shape
-                            mask = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements = torch.any(backup_aug_spatial_features != 0, dim=1)
-                            mask[non_zero_elements] = 1
-                            num = torch.sum(mask)
-                            mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            masked_source_spatial = source_spatial_features * mask
-                            agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-
-                if hypes['DG_params']['agent_level_test_method'] == 0:
-
-                    if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
-                        bs, channel, length, width = source_spatial_features.shape
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-                        mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        bs, channel, length, width = source_spatial_features.shape
-                        
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-                        mask = mask.unsqueeze(1).expand(-1, 3, -1, -1)
-                        mask = mask[0].unsqueeze(0)
-                        aug_max = (mask * 255)
-                        from torchvision.utils import save_image
-                        save_image(aug_max, "aug.jpg", nrow=bs)
-                        
-
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(source_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-                        mask = mask.unsqueeze(1).expand(-1, 3, -1, -1)
-                        mask = mask[0].unsqueeze(0)
-                        aug_max = (mask * 255)
-                        from torchvision.utils import save_image
-                        save_image(aug_max, "source.jpg", nrow=bs)
-
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(backup_aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-                        mask = mask.unsqueeze(1).expand(-1, 3, -1, -1)
-                        mask = mask[0].unsqueeze(0)
-                        aug_max = (mask * 255)
-                        from torchvision.utils import save_image
-                        save_image(aug_max, "back_aug.jpg", nrow=bs)
-
-
-                        masked_source_spatial = source_spatial_features.detach() * mask
-                        agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_spatial_features = source_spatial_features.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        mask = (aug_spatial_features != 0)
-                        if mask.shape == source_spatial_features.shape:
-                            bs, channel, length, width = source_spatial_features.shape
-                            mask = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                            mask[non_zero_elements] = 1
-                            num = torch.sum(mask)
-                            mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-                            masked_source_spatial = source_spatial_features * mask
-                            agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-
-                if hypes['DG_params']['agent_level_test_method'] == 1:
-                    if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
-                        mask = (aug_spatial_features != 0)
-                        masked_source_spatial = source_spatial_features.detach()#* mask
-                        agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_spatial_features = source_spatial_features.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        mask = (aug_spatial_features != 0)
-                        if mask.shape == source_spatial_features.shape:
-                            masked_source_spatial = source_spatial_features# * mask
-                            agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 4:
-                    if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
-
-                        bs, channel, length, width = source_spatial_features.shape
-                        mask_aug = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements_aug = torch.any(aug_spatial_features != 0, dim=1)
-                        mask_aug[non_zero_elements_aug] = 1
-                        mask_aug = mask_aug.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        mask_source = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements_source = torch.any(source_spatial_features != 0, dim=1)
-                        mask_source[non_zero_elements_source] = 1
-                        mask_source = mask_source.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        mask_joint = (mask_aug == 1) & (mask_source == 1)
-                        joint_num = torch.sum(mask_joint)
-
-
-                        masked_source_spatial = source_spatial_features.detach() * mask_joint
-                        agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_spatial_features = source_spatial_features.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_spatial_features != 0)
-                        if mask.shape == source_spatial_features.shape:
-                            bs, channel, length, width = source_spatial_features.shape
-                            mask_aug = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements_aug = torch.any(aug_spatial_features != 0, dim=1)
-                            mask_aug[non_zero_elements_aug] = 1
-                            mask_aug = mask_aug.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            mask_source = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements_source = torch.any(source_spatial_features != 0, dim=1)
-                            mask_source[non_zero_elements_source] = 1
-                            mask_source = mask_source.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            mask_joint = (mask_aug == 1) & (mask_source == 1)
-                            joint_num = torch.sum(mask_joint)
-
-                        
-                            masked_source_spatial = source_spatial_features * mask_joint
-                            agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 5:
-                    if source_spatial_features.shape[0] == aug_spatial_features.shape[0]:
-                        bs, channel, length, width = source_spatial_features.shape
-                        mask_aug = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements_aug = torch.any(aug_spatial_features != 0, dim=1)
-                        mask_aug[non_zero_elements_aug] = 1
-                        mask_aug = mask_aug.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        mask_source = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements_source = torch.any(source_spatial_features != 0, dim=1)
-                        mask_source[non_zero_elements_source] = 1
-                        mask_source = mask_source.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        mask_joint = (mask_aug == 1) & (mask_source == 1)
-                        joint_num = torch.sum(mask_joint)
-
-                        mask_joint = (mask_aug == 1) & (mask_source == 1)
-                        joint_num = torch.sum(mask_joint)
-
-                        mask_aug_only = (mask_aug == 1) & (mask_source == 0)
-                        mask_aug_only_num = torch.sum(mask_aug_only)
-
-                        mask_source_only = (mask_aug == 0) & (mask_source == 1)
-                        mask_source_only_num = torch.sum(mask_source_only)
-
-
-
-                        masked_source_spatial = source_spatial_features.detach() * mask_joint
-                        masked_source_spatial = masked_source_spatial + aug_spatial_features.detach() * mask_aug_only
-                        agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_spatial_features = source_spatial_features.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_spatial_features = torch.cat((source_spatial_features[:index_to_remove], source_spatial_features[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_spatial_features != 0)
-                        if mask.shape == source_spatial_features.shape:
-                            bs, channel, length, width = source_spatial_features.shape
-                            mask_aug = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements_aug = torch.any(aug_spatial_features != 0, dim=1)
-                            mask_aug[non_zero_elements_aug] = 1
-                            mask_aug = mask_aug.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            mask_source = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements_source = torch.any(source_spatial_features != 0, dim=1)
-                            mask_source[non_zero_elements_source] = 1
-                            mask_source = mask_source.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            mask_joint = (mask_aug == 1) & (mask_source == 1)
-                            joint_num = torch.sum(mask_joint)
-
-                            mask_aug_only = (mask_aug == 1) & (mask_source == 0)
-                            mask_aug_only_num = torch.sum(mask_aug_only)
-
-                            mask_source_only = (mask_aug == 0) & (mask_source == 1)
-                            mask_source_only_num = torch.sum(mask_source_only)
-
-                            
-                            masked_source_spatial = source_spatial_features * mask_joint
-                            masked_source_spatial = masked_source_spatial + aug_spatial_features.detach() * mask_aug_only
-                            agent_level_align_loss = agent_level_align_func(aug_spatial_features,masked_source_spatial)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-
-                if hypes['DG_params']['agent_level_test_method'] == 6:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 0 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        masked_source_single = source_single_feature.detach() 
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                           
-                            masked_source_single = source_single_feature 
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 7:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 1 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        masked_source_single = source_single_feature.detach() 
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                           
-                            masked_source_single = source_single_feature 
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 8:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 2 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        masked_source_single = source_single_feature.detach() 
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                           
-                            masked_source_single = source_single_feature 
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 9:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 0 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        bs, channel, length, width = aug_spatial_features.shape
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-
-                        bs, channel, length, width = source_single_feature.shape
-                        mask = F.max_pool2d(mask, kernel_size=2, stride=2)
-                        mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        
-                    
-
-                        masked_source_single = source_single_feature.detach() * mask
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                            
-                            bs, channel, length, width = aug_spatial_features.shape
-                            mask = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                            mask[non_zero_elements] = 1
-                            num = torch.sum(mask)
-
-                            bs, channel, length, width = source_single_feature.shape
-                            mask = F.max_pool2d(mask, kernel_size=2, stride=2)
-                            mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            masked_source_single = source_single_feature  * mask
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 10:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 1 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        bs, channel, length, width = aug_spatial_features.shape
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-
-                        bs, channel, length, width = source_single_feature.shape
-                        mask = F.max_pool2d(mask, kernel_size=4, stride=4)
-                        mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        
-                    
-
-                        masked_source_single = source_single_feature.detach() * mask
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                            
-                            bs, channel, length, width = aug_spatial_features.shape
-                            mask = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                            mask[non_zero_elements] = 1
-                            num = torch.sum(mask)
-
-                            bs, channel, length, width = source_single_feature.shape
-                            mask = F.max_pool2d(mask, kernel_size=4, stride=4)
-                            mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            masked_source_single = source_single_feature  * mask
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
-
-                if hypes['DG_params']['agent_level_test_method'] == 11:
-                    source_single_features = source_ouput_dict['batch_dict']['before_fusion_features']
-                    aug_single_features = aug_ouput_dict['batch_dict']['before_fusion_features']
-                    agent_metric_level = 2 #hypes['DG_params']['Agent_metric_level']
-                    source_single_feature = source_single_features[agent_metric_level]
-                    aug_single_feature = aug_single_features[agent_metric_level]
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        
-                        bs, channel, length, width = aug_spatial_features.shape
-                        mask = torch.zeros(bs, length, width).to(device)
-                        non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                        mask[non_zero_elements] = 1
-                        num = torch.sum(mask)
-
-                        bs, channel, length, width = source_single_feature.shape
-                        mask = F.max_pool2d(mask, kernel_size=8, stride=8)
-                        mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                        
-                    
-
-                        masked_source_single = source_single_feature.detach() * mask
-                        agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                        final_loss += agent_level_align_weight * agent_level_align_loss
-                    else:
-                        source_single_feature = source_single_feature.detach() 
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        
-                        mask = (aug_single_feature != 0)
-                        if mask.shape == source_single_feature.shape:
-                            
-                            bs, channel, length, width = aug_spatial_features.shape
-                            mask = torch.zeros(bs, length, width).to(device)
-                            non_zero_elements = torch.any(aug_spatial_features != 0, dim=1)
-                            mask[non_zero_elements] = 1
-                            num = torch.sum(mask)
-
-                            bs, channel, length, width = source_single_feature.shape
-                            mask = F.max_pool2d(mask, kernel_size=8, stride=8)
-                            mask = mask.unsqueeze(1).expand(-1, channel, -1, -1)
-
-                            masked_source_single = source_single_feature  * mask
-                            agent_level_align_loss = agent_level_align_func(aug_single_feature,masked_source_single)
-                            final_loss += agent_level_align_weight * agent_level_align_loss
 
 
             fusion_level_align_loss = None
@@ -789,17 +288,9 @@ def main():
                 aug_pillars = aug_ouput_dict['batch_dict']['pillar_features']
                 aug_spatial_features_2d = aug_ouput_dict['batch_dict']['spatial_features_2d']
                 
-                if hypes['DG_params']['fusion_level_test_method'] == 1:
-                    fusion_level_align_loss = fusion_level_align_func(aug_spatial_features_2d,source_spatial_features_2d.detach())
-                    final_loss += fusion_level_align_weight * fusion_level_align_loss
-                if hypes['DG_params']['fusion_level_test_method'] == 2:
-                    fusion_level_align_loss = fusion_level_align_func(aug_spatial_features_2d,source_spatial_features_2d)
-                    final_loss += fusion_level_align_weight * fusion_level_align_loss
-                # model_parameters = list(model.parameters())
-                # grad_source = torch.autograd.grad(source_final_loss,model_parameters)
-                # grad_aug = torch.autograd.grad(aug_final_loss,model_parameters)
-                # source_final_loss.backward()
-                # aug_final_loss.backward()
+                
+                fusion_level_align_loss = fusion_level_align_func(aug_spatial_features_2d,source_spatial_features_2d.detach())
+                final_loss += fusion_level_align_weight * fusion_level_align_loss
 
             fusion_level_metric_loss = None
             if hypes['DG_params']['Fusion_level_metric']: 
@@ -812,19 +303,10 @@ def main():
                 aug_spatial_features_2d = aug_ouput_dict['batch_dict']['spatial_features_2d']
 
 
-                if hypes['DG_params']['fusion_level_metric_method'] == 1:
-
-                    source_fusion_features = fusion_level_metric_learner(source_spatial_features_2d)
-                    aug_fusion_features = fusion_level_metric_learner(aug_spatial_features_2d)
-                    fusion_level_metric_loss = fusion_level_metric_func(source_fusion_features,aug_fusion_features,manner = 0)
-                    final_loss += fusion_level_metric_weight * fusion_level_metric_loss
-
-                if hypes['DG_params']['fusion_level_metric_method'] == 2:
-
-                    source_fusion_features = fusion_level_metric_learner(source_spatial_features_2d)
-                    aug_fusion_features = fusion_level_metric_learner(aug_spatial_features_2d)
-                    fusion_level_metric_loss = fusion_level_metric_func(source_fusion_features,aug_fusion_features,manner = 1)
-                    final_loss += fusion_level_metric_weight * fusion_level_metric_loss
+                source_fusion_features = fusion_level_metric_learner(source_spatial_features_2d)
+                aug_fusion_features = fusion_level_metric_learner(aug_spatial_features_2d)
+                fusion_level_metric_loss = fusion_level_metric_func(source_fusion_features,aug_fusion_features,manner = 0)
+                final_loss += fusion_level_metric_weight * fusion_level_metric_loss
 
 
             agent_level_metric_loss = None
@@ -844,77 +326,35 @@ def main():
                 source_single_feature = source_single_features[agent_metric_level]
                 aug_single_feature = aug_single_features[agent_metric_level]
 
-                if hypes['DG_params']['Agent_level_metric_method'] == 1:
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        source_agent_features = agent_level_metric_learner(source_single_feature) #.unsqueeze(1)
+                
+                if source_single_feature.shape[0] == aug_single_feature.shape[0]:
+                    source_agent_features = agent_level_metric_learner(source_single_feature) 
 
-                        aug_agent_features = agent_level_metric_learner(aug_single_feature) #.unsqueeze(1)
-                        cav_ids = list(cav_masks.keys())
-                        #cav_ids = [int(x = x if 'chongfu' in x else x.replace('chongfu', '')) for x in cav_ids]
+                    aug_agent_features = agent_level_metric_learner(aug_single_feature)
+                    cav_ids = list(cav_masks.keys())
+                    cav_ids = [int(x) if 'chongfu' not in x else int(x.replace('chongfu', '')) for x in cav_ids]
+                    labels = torch.tensor(cav_ids).to(device)
+                    agent_level_metric_loss = agent_level_metric_func(source_agent_features,aug_agent_features,labels)
+                    final_loss += agent_level_metric_weight * agent_level_metric_loss
+                else:
+                    source_single_feature = source_single_feature
+                    remove_num = 0
+                    index = 0
+                    for idx in cav_masks:
+                        cur_cav_mask = cav_masks[idx]
+                        if cur_cav_mask == 0:
+                            index_to_remove = index - remove_num
+                            source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
+                            remove_num += 1
+                        index += 1
+                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
+                        source_agent_features = agent_level_metric_learner(source_single_feature)
+                        aug_agent_features = agent_level_metric_learner(aug_single_feature)
+                        cav_ids = [index for index, value in cav_masks.items() if value != 0]
                         cav_ids = [int(x) if 'chongfu' not in x else int(x.replace('chongfu', '')) for x in cav_ids]
                         labels = torch.tensor(cav_ids).to(device)
-                        #features = torch.cat((source_agent_features,aug_agent_features),dim=1)
-                        # if labels.shape[0] != features.shape[0]:
-                        #     print('error')
                         agent_level_metric_loss = agent_level_metric_func(source_agent_features,aug_agent_features,labels)
                         final_loss += agent_level_metric_weight * agent_level_metric_loss
-                    else:
-                        source_single_feature = source_single_feature
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                            source_agent_features = agent_level_metric_learner(source_single_feature)#.unsqueeze(1)
-                            aug_agent_features = agent_level_metric_learner(aug_single_feature)#.unsqueeze(1)
-                            #cav_ids = list(cav_masks.keys())
-                            cav_ids = [index for index, value in cav_masks.items() if value != 0]
-                            cav_ids = [int(x) if 'chongfu' not in x else int(x.replace('chongfu', '')) for x in cav_ids]
-                            labels = torch.tensor(cav_ids).to(device)
-                            #features = torch.cat((source_agent_features,aug_agent_features),dim=1)
-                            agent_level_metric_loss = agent_level_metric_func(source_agent_features,aug_agent_features,labels)
-                            final_loss += agent_level_metric_weight * agent_level_metric_loss
-                        
-                if hypes['DG_params']['Agent_level_metric_method'] == 2:
-                    if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                        source_agent_features = agent_level_metric_learner(source_single_feature) #.unsqueeze(1)
-
-                        aug_agent_features = agent_level_metric_learner(aug_single_feature) #.unsqueeze(1)
-                        cav_ids = list(cav_masks.keys())
-                        #cav_ids = [int(x = x if 'chongfu' in x else x.replace('chongfu', '')) for x in cav_ids]
-                        cav_ids = [int(x) if 'chongfu' not in x else int(x.replace('chongfu', '')) for x in cav_ids]
-                        labels = torch.tensor(cav_ids).to(device)
-                        #features = torch.cat((source_agent_features,aug_agent_features),dim=1)
-                        # if labels.shape[0] != features.shape[0]:
-                        #     print('error')
-                        agent_level_metric_loss = agent_level_metric_func(source_agent_features,aug_agent_features,labels,manner=1)
-                        final_loss += agent_level_metric_weight * agent_level_metric_loss
-                    else:
-                        source_single_feature = source_single_feature
-                        remove_num = 0
-                        index = 0
-                        for idx in cav_masks:
-                            cur_cav_mask = cav_masks[idx]
-                            if cur_cav_mask == 0:
-                                index_to_remove = index - remove_num
-                                source_single_feature = torch.cat((source_single_feature[:index_to_remove], source_single_feature[index_to_remove+1:]), dim=0)
-                                remove_num += 1
-                            index += 1
-                        if source_single_feature.shape[0] == aug_single_feature.shape[0]:
-                            source_agent_features = agent_level_metric_learner(source_single_feature)#.unsqueeze(1)
-                            aug_agent_features = agent_level_metric_learner(aug_single_feature)#.unsqueeze(1)
-                            #cav_ids = list(cav_masks.keys())
-                            cav_ids = [index for index, value in cav_masks.items() if value != 0]
-                            cav_ids = [int(x) if 'chongfu' not in x else int(x.replace('chongfu', '')) for x in cav_ids]
-                            labels = torch.tensor(cav_ids).to(device)
-                            #features = torch.cat((source_agent_features,aug_agent_features),dim=1)
-                            agent_level_metric_loss = agent_level_metric_func(source_agent_features,aug_agent_features,labels,manner=1)
-                            final_loss += agent_level_metric_weight * agent_level_metric_loss
 
                         
 

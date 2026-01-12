@@ -151,9 +151,6 @@ class BaseDataset(Dataset):
                 # save all yaml files to the dictionary
                 cav_path = os.path.join(scenario_folder, cav_id)
 
-                # use the frame number as key, the full path as the values
-                # todo: hardcoded to remove additional yamls. no need to worry
-                # about this for users.
                 yaml_files = \
                     sorted([os.path.join(cav_path, x)
                             for x in os.listdir(cav_path) if
@@ -255,7 +252,6 @@ class BaseDataset(Dataset):
             data[cav_id]['lidar_np'] = \
                 pcd_utils.pcd_to_np(cav_content[timestamp_key_delay]['lidar'])
             
-            #TODO:advw_by_baolu
             if 'denoising_params' not in self.params:
                 if self.train:
                     adv_root = self.params['root_dir']
@@ -268,9 +264,6 @@ class BaseDataset(Dataset):
                     adv_root = self.params['denoising_params']['validate_dir']
             sub_path = cav_content[timestamp_key_delay]['lidar'].split('/')[-3:]
             adv_path = os.path.join(adv_root,sub_path[0],sub_path[1],sub_path[2])
-
-            # data[cav_id]['advw_lidar_np'] = \
-            #     pcd_utils.pcd_to_np(adv_path)
 
             data[cav_id]['folder_name'] = \
                 cav_content[timestamp_key_delay]['lidar'].split('/')[-3]
