@@ -1,44 +1,14 @@
-# V2V4Real: A large-scale real-world dataset for Vehicle-to-Vehicle Cooperative Perception
-[![website](https://img.shields.io/badge/Website-Explore%20Now-blueviolet?style=flat&logo=google-chrome)](https://research.seas.ucla.edu/mobility-lab/v2v4real/)
-[![paper](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/pdf/2303.07601.pdf)
-[![supplement](https://img.shields.io/badge/Supplementary-Material-red)](https://arxiv.org/pdf/2303.07601.pdf)
-[![video](https://img.shields.io/badge/Video-Presentation-F9D371)]()
+# V2X-DGW: Domain Generalization for Multi-agent Perception under Adverse Weather Conditions
+[![paper](https://img.shields.io/badge/arXiv-Paper-<COLOR>.svg)](https://arxiv.org/pdf/2403.11371)
 
 
-This is the official implementation of CVPR2023 **Highlight** paper. "V2V4Real: A large-scale real-world dataset for Vehicle-to-Vehicle Cooperative Perception".
-[Runsheng Xu](https://derrickxunu.github.io/),  [Xin Xia](https://scholar.google.com/citations?user=vCYqMTIAAAAJ&hl=en), [Jinlong Li](https://jinlong17.github.io/), [Hanzhao Li](), [Shuo Zhang](),  [Zhengzhong Tu](https://github.com/vztu), [Zonglin Meng](), [Hao Xiang](https://xhwind.github.io/), [Xiaoyu Dong](), [Rui Song](), [Hongkai Yu](https://scholar.google.com/citations?user=JnQts0kAAAAJ&hl=en), [Bolei Zhou](https://boleizhou.github.io/), [Jiaqi Ma](https://mobility-lab.seas.ucla.edu/)
 
-Supported by the [UCLA Mobility Lab](https://mobility-lab.seas.ucla.edu/).
+This is the official implementation of ICRA2025 paper. "V2X-DGW: Domain Generalization for Multi-agent Perception under Adverse Weather Conditions".
+
 
 <p align="center">
 <img src="imgs/scene1.png" width="600" alt="" class="img-responsive">
 </p>
-
-## Overview
-- [Codebase Features](#codebase-features)
-- [Data Download](#data-download)
-- [Changelog](#changelog)
-- [Devkit Setup](#devkit-setup)
-- [Quick Start](#quick-start)
-- [Benchmark](#benchmark)
-- [Citation](#citation)
-- [Acknowledgment](#known-issues)
-
-## CodeBase Features
-- Support both simulation and real-world cooperative perception dataset
-    - [x] V2V4Real
-    - [x] OPV2V
-- Multiple Tasks supported
-    - [x] 3D object detection
-    - [ ] Cooperative tracking
-    - [x] Sim2Real
-- SOTA model supported
-    - [x] [Attentive Fusion [ICRA2022]](https://arxiv.org/abs/2109.07644)
-    - [x] [Cooper [ICDCS]](https://arxiv.org/abs/1905.05265)
-    - [x] [F-Cooper [SEC2019]](https://arxiv.org/abs/1909.06459)
-    - [x] [V2VNet [ECCV2020]](https://arxiv.org/abs/2008.07519)
-    - [x] [V2X-ViT [ECCV2022]](https://github.com/DerrickXuNu/v2x-vit)
-    - [x] [CoBEVT [CoRL2022]](https://arxiv.org/abs/2207.02202)
 
 ## Data Download
 Please check our [website](https://research.seas.ucla.edu/mobility-lab/v2v4real/) to download the data (OPV2V format).
