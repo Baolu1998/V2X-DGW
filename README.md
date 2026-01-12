@@ -21,7 +21,7 @@ This is the official implementation of ICRA2025 paper. "V2X-DGW: Domain Generali
 
 ## Devkit setup and Quick Start
 
-Please refer to V2V4Real, our code are mainly based on this repo [V2V4Real](https://github.com/ucla-mobility/V2V4Real)
+Please refer to V2V4Real, our code are mainly based on this repo [V2V4Real](https://github.com/ucla-mobility/V2V4Real).
 
 
 ## Citation
