@@ -7,14 +7,16 @@ This is the official implementation of ICRA2025 paper. "V2X-DGW: Domain Generali
 
 
 <p align="center">
-<img src="imgs/scene1.png" width="600" alt="" class="img-responsive">
+<img src="img/intro.png" width="600" alt="" class="img-responsive">
 </p>
 
-## Data Download
+## Data and Checkpoint Download
 
-Please open opv2v-w [website](https://csuohio-my.sharepoint.com/:u:/g/personal/2883754_vikes_csuohio_edu/IQAjsTKlS-C1QY1trdqJFI3fAbiGlzztMoMPNcQX27kx7yk?e=6IY16M) to download the data.
+Please open opv2v-w [link](https://csuohio-my.sharepoint.com/:u:/g/personal/2883754_vikes_csuohio_edu/IQAjsTKlS-C1QY1trdqJFI3fAbiGlzztMoMPNcQX27kx7yk?e=6IY16M) to download the data.
 
-Please open v2xset-w [website](https://csuohio-my.sharepoint.com/:u:/g/personal/2883754_vikes_csuohio_edu/IQA6uWw7Y4wsT4O9VCMA41prAZ7iwxceOsXsQNJXadzDAPY?e=b6xAde) to download the data.
+Please open v2xset-w [link](https://csuohio-my.sharepoint.com/:u:/g/personal/2883754_vikes_csuohio_edu/IQA6uWw7Y4wsT4O9VCMA41prAZ7iwxceOsXsQNJXadzDAPY?e=b6xAde) to download the data.
+
+Please open checkpoint [link](https://csuohio-my.sharepoint.com/:u:/g/personal/2883754_vikes_csuohio_edu/IQCRo9j1fO6gT6WtiqywCC5xAS0ex5JVEvORNN4SE8EKaPw?e=abD6xW) to download the checkpoint.
 
 
 ## Devkit setup and Quick Start
